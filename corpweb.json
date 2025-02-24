@@ -1,0 +1,216 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Parameters": {
+    "InstanceType": {
+      "Description": "Server instance type",
+      "Type": "String",
+      "Default": "t2.micro",
+      "AllowedValues": [
+        "t2.micro",
+        "t2.medium"
+      ],
+      "ConstraintDescription": "Must be a valid EC2 type."
+    },
+	"KeyPairName": {
+		"Description": "Name of your EC2 keypair to enable SSH access",
+		"Type": "AWS::EC2::KeyPair::KeyName",
+		"ConstraintDescription": "Must be the name of an existing KeyPair"
+	},
+	"YourIP": {
+		"Description": "The current IP address of your workstation (50.244.219.129/16)",
+		"Type": "String"
+	}
+  },
+  "Resources": {
+    "EngineeringVPC": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "EnableDnsSupport": "true",
+        "EnableDnsHostnames": "true",
+        "CidrBlock": "10.0.0.0/18",
+        "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "Test"
+          }
+        ]
+      }
+    },
+
+    "InternetGateway": {
+      "Type": "AWS::EC2::InternetGateway",
+      "Properties": {}
+    },
+    "VPCGatewayAttachment": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "InternetGatewayId": {
+          "Ref": "InternetGateway"
+        },
+        "VpcId": {
+          "Ref": "EngineeringVPC"
+        }
+      }
+    },
+    "PublicRouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "EngineeringVPC"
+        }
+      }
+    },
+    "PublicRoute": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "RouteTableId": {
+          "Ref": "PublicRouteTable"
+        },
+        "GatewayId": {
+          "Ref": "InternetGateway"
+        }
+      },
+      "DependsOn": [
+        "InternetGateway"
+      ]
+    },
+    "PublicSubnet1": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+            "Ref": "EngineeringVPC"
+        },
+        "MapPublicIpOnLaunch" : "true",
+        "CidrBlock": "10.0.0.0/24",
+        "AvailabilityZone" : {
+          "Fn::Select" : [ "0", { "Fn::GetAZs" : { "Ref" : "AWS::Region" }}]
+        },
+        "Tags" : [
+          { "Key": "Name",
+            "Value": "Website-Public-Subnet"
+          }
+        ]
+      }
+    },
+    "PublicSubnet2": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+            "Ref": "EngineeringVPC"
+        },
+        "MapPublicIpOnLaunch" : "true",
+        "CidrBlock": "10.0.1.0/24",
+        "AvailabilityZone" : {
+          "Fn::Select" : [ "1", { "Fn::GetAZs" : { "Ref" : "AWS::Region" }}]
+        },
+        "Tags" : [
+          { "Key": "Name",
+            "Value": "Website-Public-Subnet"
+          }
+        ]
+      }
+    },	
+    "PublicSubnet1RTassoc": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "PublicRouteTable"
+        },
+        "SubnetId": {
+          "Ref": "PublicSubnet1"
+        }
+      }
+    },
+    "PublicSubnet2RTassoc": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "PublicRouteTable"
+        },
+        "SubnetId": {
+          "Ref": "PublicSubnet2"
+        }
+      }
+    },
+    "Webserver1": {
+      "Type": "AWS::EC2::Instance",
+      "Properties" : {
+	      "KeyName": {"Ref": "KeyPairName"},
+        "InstanceType": {"Ref": "InstanceType"},
+        "ImageId": "ami-05b10e08d247fb927",
+		"KeyName" : "testimageKP",
+        "SubnetId": { "Ref": "PublicSubnet1" },
+        "SecurityGroupIds": [
+          { "Ref": "WebserverSG"}
+        ],
+        "Tags" : [
+          { "Key": "Name",
+            "Value": "webserver1"
+          }
+        ]
+      }
+    },
+    "Webserver2": {
+      "Type": "AWS::EC2::Instance",
+      "Properties" : {
+	      "KeyName": {"Ref": "KeyPairName"},
+        "InstanceType": {"Ref": "InstanceType"},
+        "ImageId": "ami-0fc82f4dabc05670b",
+		"KeyName" : "testimageKP1",
+        "SubnetId": { "Ref": "PublicSubnet2" },
+        "SecurityGroupIds": [
+          { "Ref": "WebserverSG"}
+        ],
+        "Tags" : [
+          { "Key": "Name",
+            "Value": "webserver2"
+          }
+        ]
+      }
+    },
+    "WebserverSG": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": {
+            "Ref": "EngineeringVPC"
+        },
+        "GroupDescription": "Security group rules for webserver host.",
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "80",
+            "ToPort": "80",
+            "CidrIp": "0.0.0.0/0"
+          },
+		      {
+            "IpProtocol": "tcp",
+            "FromPort": "22",
+            "ToPort": "22",
+            "CidrIp": "50.244.219.129/32"		  
+		      }
+        ]
+      }
+    }
+	
+  },
+  "Outputs": {
+    "weburl": {
+      "Value": {
+        "Fn::Join": [
+          "",
+          [
+            "http://",
+            {
+              "Fn::GetAtt": [
+                "Webserver1",
+                "PublicIp"
+              ]
+            }
+          ]
+        ]
+      },
+      "Description": "Webserver URL"
+    }
+  }
+}
